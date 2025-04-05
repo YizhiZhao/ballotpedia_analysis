@@ -78,8 +78,13 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
     soup = BeautifulSoup(response.content, "html.parser")
     results = {}
     
+    # Utility function to check if an election is canceled
+    def is_election_canceled(header):
+        next_element = header.find_next_sibling()
+        return next_element and "canceled" in next_element.get_text().lower()
+    
     # Utility function to extract election results from a given section header.
-    def extract_results(header, include_party=True):
+    def extract_results(header, include_party=False):
         # Find the nearest container with the results table.
         container = header.find_next("div", class_="results_table_container")
         if not container:
@@ -134,8 +139,11 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
     # Extract General election results.
     general_header = soup.find("h4", string=lambda s: s and "General election" in s)
     if general_header:
-        general_results = extract_results(general_header, include_party=True)
-        results["General"] = general_results
+        if is_election_canceled(general_header):
+            print("General election is canceled.")
+        else:
+            general_results = extract_results(general_header, include_party=True)
+            results["General"] = general_results
     else:
         print("General election header not found.")
     
@@ -145,8 +153,11 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
         if not primary_header:
             print(f"{party} primary election header not found.")
             continue
-        party_results = extract_results(primary_header)
-        results[party] = party_results
+        if is_election_canceled(primary_header):
+            print(f"{party} primary election is canceled.")
+        else:
+            party_results = extract_results(primary_header)
+            results[party] = party_results
     
     return results
 
@@ -212,4 +223,4 @@ def main():
     print(f"\nProcessed {len(district_links)} districts.")
 
 if __name__ == "__main__":
-    main() 
+    main()
