@@ -4,6 +4,7 @@ import re
 import time
 import os
 import json
+import csv
 
 def get_congressional_district_links():
     # Base URL for Ballotpedia
@@ -170,6 +171,92 @@ def save_links_to_file(links, filename="congressional_district_links.txt"):
     except IOError as e:
         print(f"Error saving to file: {e}")
 
+def extract_district_name(url):
+    """Extract the district name from the URL."""
+    # Remove the base URL and any trailing slashes
+    path = url.replace("https://ballotpedia.org/", "").rstrip("/")
+    
+    # Handle special cases
+    if "At-Large" in path:
+        # For at-large districts, extract the state name
+        state = path.split("'s_At-Large")[0].replace("_", " ")
+        return f"{state} At-Large"
+    
+    # For numbered districts, extract state and district number
+    match = re.search(r"(.+)'s_(\d+)(?:st|nd|rd|th)_Congressional_District", path)
+    if match:
+        state = match.group(1).replace("_", " ")
+        district_num = match.group(2)
+        return f"{state} {district_num}"
+    
+    # Fallback: return the path with underscores replaced by spaces
+    return path.replace("_", " ")
+
+def format_results_for_csv(results, include_turnout=True):
+    """Format election results as a string for CSV output."""
+    if not results:
+        return "No results"
+    
+    formatted = []
+    for candidate, votes in results.items():
+        if candidate != "Turnout":
+            formatted.append(f"{candidate}: {votes}")
+    
+    return "; ".join(formatted)
+
+def get_turnout(results):
+    """Extract turnout from results."""
+    if not results or "Turnout" not in results:
+        return "No turnout data"
+    
+    return results["Turnout"]
+
+def calculate_partisan_advantage(results):
+    """
+    Calculate the partisan advantage in the general election.
+    Returns a string like 'R+57' or 'D+42' indicating the percentage advantage.
+    """
+    if not results or "General" not in results:
+        return "No data"
+    
+    general_results = results["General"]
+    if "Turnout" not in general_results:
+        return "No turnout data"
+    
+    turnout = general_results["Turnout"]
+    if turnout == 0:
+        return "Zero turnout"
+    
+    # Find Republican and Democratic candidates
+    r_votes = 0
+    d_votes = 0
+    
+    for candidate, votes in general_results.items():
+        if candidate == "Turnout":
+            continue
+        
+        # Check if candidate is Republican
+        if "(R)" in candidate:
+            r_votes = votes
+        # Check if candidate is Democratic
+        elif "(D)" in candidate:
+            d_votes = votes
+    
+    # Calculate the difference as a percentage
+    if r_votes == 0 and d_votes == 0:
+        return "No R/D candidates"
+    
+    difference = r_votes - d_votes
+    percentage = (difference / turnout) * 100
+    
+    # Format as R+XX or D+XX
+    if percentage > 0:
+        return f"R+{percentage:.1f}"
+    elif percentage < 0:
+        return f"D+{abs(percentage):.1f}"
+    else:
+        return "Even"
+
 def main():
     # Get all congressional district links
     print("Fetching all congressional district links...")
@@ -184,43 +271,67 @@ def main():
     # Save links to file
     save_links_to_file(district_links)
     
-    # Process each district
-    for i, url in enumerate(district_links):
-        print(f"\nProcessing district {i+1}/{len(district_links)}: {url}")
+    # Create CSV file
+    csv_filename = "congressional_district_results_2024.csv"
+    with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
+        csv_writer = csv.writer(csvfile)
+        # Write header with Partisan Advantage as the 5th column
+        csv_writer.writerow([
+            "District", 
+            "URI", 
+            "2024 General Election - Candidates", 
+            "2024 General Election - Turnout",
+            "Partisan Advantage",
+            "2024 Democratic Primary - Candidates", 
+            "2024 Democratic Primary - Turnout",
+            "2024 Republican Primary - Candidates", 
+            "2024 Republican Primary - Turnout"
+        ])
         
-        # Extract district name from URL
-        district_name = url.split('/')[-1].replace('%27', '_').replace('%', '_')
-        
-        # Get primary results
-        results = get_2024_result(url)
-        
-        if results:
-            # Print results
-            print(f"\nResults for {district_name}:")
-            for party, candidates in results.items():
-                if candidates:
-                    print(f"\n{party} Primary:")
-                    # Print turnout first
-                    if "Turnout" in candidates:
-                        print(f"Turnout: {candidates['Turnout']:,} total votes")
-                        # Remove turnout from candidates to avoid printing it twice
-                        turnout = candidates.pop("Turnout")
-                    
-                    # Print candidate results
-                    for candidate, votes in candidates.items():
-                        print(f"{candidate}: {votes:,} votes")
-                    
-                    # Add turnout back
-                    candidates["Turnout"] = turnout
-                else:
-                    print(f"\n{party} Primary: No results found")
-        else:
-            print(f"No results found for {district_name}")
-        
-        # Add a delay to avoid overwhelming the server
-        time.sleep(2)
+        # Process each district
+        for i, url in enumerate(district_links):
+            print(f"\nProcessing district {i+1}/{len(district_links)}: {url}")
+            
+            # Extract district name from URL
+            district_name = extract_district_name(url)
+            
+            # Get primary results
+            results = get_2024_result(url)
+            
+            # Format results for CSV
+            general_results = format_results_for_csv(results.get("General", {}))
+            general_turnout = get_turnout(results.get("General", {}))
+            
+            democratic_results = format_results_for_csv(results.get("Democratic", {}))
+            democratic_turnout = get_turnout(results.get("Democratic", {}))
+            
+            republican_results = format_results_for_csv(results.get("Republican", {}))
+            republican_turnout = get_turnout(results.get("Republican", {}))
+            
+            # Calculate partisan advantage
+            partisan_advantage = calculate_partisan_advantage(results)
+            
+            # Write to CSV with Partisan Advantage as the 5th column
+            csv_writer.writerow([
+                district_name, 
+                url, 
+                general_results, 
+                general_turnout,
+                partisan_advantage,
+                democratic_results, 
+                democratic_turnout,
+                republican_results, 
+                republican_turnout
+            ])
+            
+            # Print progress
+            print(f"Added {district_name} to CSV")
+            
+            # Add a delay to avoid overwhelming the server
+            time.sleep(1)
     
     print(f"\nProcessed {len(district_links)} districts.")
+    print(f"Results saved to {csv_filename}")
 
 if __name__ == "__main__":
     main()
