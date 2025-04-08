@@ -184,18 +184,16 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
             print("Found nonpartisan primary election.")
     
     # Extract Primary election results for Democratic and Republican contests.
-    # Only look for these if no nonpartisan primary was found
-    if "Nonpartisan" not in results:
-        for party in ["Democratic", "Republican"]:
-            primary_header = content_soup.find("h4", string=lambda s: s and f"{party} primary election" in s)
-            if not primary_header:
-                print(f"{party} primary election header not found.")
-                continue
-            if is_election_canceled(primary_header):
-                print(f"{party} primary election is canceled.")
-            else:
-                party_results = extract_results(primary_header)
-                results[party] = party_results
+    for party in ["Democratic", "Republican"]:
+        primary_header = content_soup.find("h4", string=lambda s: s and f"{party} primary election" in s)
+        if not primary_header:
+            print(f"{party} primary election header not found.")
+            continue
+        if is_election_canceled(primary_header):
+            print(f"{party} primary election is canceled.")
+        else:
+            party_results = extract_results(primary_header)
+            results[party] = party_results
     
     return results
 
