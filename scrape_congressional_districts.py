@@ -371,8 +371,6 @@ def main():
             # Print progress
             print(f"Added {district_name} to CSV")
             
-            # Add a delay to avoid overwhelming the server
-            time.sleep(1)
     
     print(f"\nProcessed {len(district_links)} districts.")
     print(f"Results saved to {csv_filename}")
