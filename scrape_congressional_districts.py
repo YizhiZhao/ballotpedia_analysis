@@ -59,6 +59,7 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
       - "General": results from the general election, including a "Turnout" field.
       - "Democratic": results from the Democratic primary, including a "Turnout" field.
       - "Republican": results from the Republican primary, including a "Turnout" field.
+      - "Nonpartisan": results from the nonpartisan primary, including a "Turnout" field.
       
     Each sub-dictionary maps candidate names to their vote counts (as integers), plus a "Turnout" key
     with the total votes cast in that election.
@@ -78,6 +79,30 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
     
     soup = BeautifulSoup(response.content, "html.parser")
     results = {}
+    
+    # Find the 2024 and 2022 h3 elements to limit the search scope
+    h3_2024 = soup.find("h3", string=lambda s: s and "2024" in s)
+    h3_2022 = soup.find("h3", string=lambda s: s and "2022" in s)
+    
+    if not h3_2024:
+        print("2024 election section not found.")
+        return {}
+    
+    # Create a new soup with only the content between 2024 and 2022 h3 elements
+    if h3_2022:
+        # Get all elements between 2024 and 2022
+        content_between = []
+        current = h3_2024.next_sibling
+        while current and current != h3_2022:
+            content_between.append(current)
+            current = current.next_sibling
+        
+        # Create a new soup with just this content
+        content_html = "".join(str(element) for element in content_between)
+        content_soup = BeautifulSoup(content_html, "html.parser")
+    else:
+        # If no 2022 section found, use everything after 2024
+        content_soup = BeautifulSoup("".join(str(element) for element in h3_2024.find_all_next()), "html.parser")
     
     # Utility function to check if an election is canceled
     def is_election_canceled(header):
@@ -138,7 +163,7 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
         return contest_results
     
     # Extract General election results.
-    general_header = soup.find("h4", string=lambda s: s and "General election" in s)
+    general_header = content_soup.find("h4", string=lambda s: s and "General election" in s)
     if general_header:
         if is_election_canceled(general_header):
             print("General election is canceled.")
@@ -148,17 +173,29 @@ def get_2024_result(url="https://ballotpedia.org/Wyoming's_At-Large_Congressiona
     else:
         print("General election header not found.")
     
-    # Extract Primary election results for Democratic and Republican contests.
-    for party in ["Democratic", "Republican"]:
-        primary_header = soup.find("h4", string=lambda s: s and f"{party} primary election" in s)
-        if not primary_header:
-            print(f"{party} primary election header not found.")
-            continue
-        if is_election_canceled(primary_header):
-            print(f"{party} primary election is canceled.")
+    # Check for nonpartisan primary first
+    nonpartisan_header = content_soup.find("h4", string=lambda s: s and "Nonpartisan primary election" in s)
+    if nonpartisan_header:
+        if is_election_canceled(nonpartisan_header):
+            print("Nonpartisan primary election is canceled.")
         else:
-            party_results = extract_results(primary_header)
-            results[party] = party_results
+            nonpartisan_results = extract_results(nonpartisan_header)
+            results["Nonpartisan"] = nonpartisan_results
+            print("Found nonpartisan primary election.")
+    
+    # Extract Primary election results for Democratic and Republican contests.
+    # Only look for these if no nonpartisan primary was found
+    if "Nonpartisan" not in results:
+        for party in ["Democratic", "Republican"]:
+            primary_header = content_soup.find("h4", string=lambda s: s and f"{party} primary election" in s)
+            if not primary_header:
+                print(f"{party} primary election header not found.")
+                continue
+            if is_election_canceled(primary_header):
+                print(f"{party} primary election is canceled.")
+            else:
+                party_results = extract_results(primary_header)
+                results[party] = party_results
     
     return results
 
@@ -285,7 +322,9 @@ def main():
             "2024 Democratic Primary - Candidates", 
             "2024 Democratic Primary - Turnout",
             "2024 Republican Primary - Candidates", 
-            "2024 Republican Primary - Turnout"
+            "2024 Republican Primary - Turnout",
+            "2024 Nonpartisan Primary - Candidates", 
+            "2024 Nonpartisan Primary - Turnout",
         ])
         
         # Process each district
@@ -301,15 +340,18 @@ def main():
             # Format results for CSV
             general_results = format_results_for_csv(results.get("General", {}))
             general_turnout = get_turnout(results.get("General", {}))
+
+            # Calculate partisan advantage
+            partisan_advantage = calculate_partisan_advantage(results)
             
             democratic_results = format_results_for_csv(results.get("Democratic", {}))
             democratic_turnout = get_turnout(results.get("Democratic", {}))
             
             republican_results = format_results_for_csv(results.get("Republican", {}))
             republican_turnout = get_turnout(results.get("Republican", {}))
-            
-            # Calculate partisan advantage
-            partisan_advantage = calculate_partisan_advantage(results)
+
+            nonpartisan_results = format_results_for_csv(results.get("Nonpartisan", {}))
+            nonpartisan_turnout = get_turnout(results.get("Nonpartisan", {}))
             
             # Write to CSV with Partisan Advantage as the 5th column
             csv_writer.writerow([
@@ -321,7 +363,9 @@ def main():
                 democratic_results, 
                 democratic_turnout,
                 republican_results, 
-                republican_turnout
+                republican_turnout,
+                nonpartisan_results, 
+                nonpartisan_turnout
             ])
             
             # Print progress
