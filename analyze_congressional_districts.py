@@ -61,8 +61,7 @@ def analyze_districts():
             axis=1
         )
         
-        # Filter out districts with zero turnout (no primary data)
-        df_filtered = df[df['Primary Turnout'] > 0]
+        df_filtered = df
         
         # Filter out districts with R20+ partisan advantage
         df_filtered = df_filtered[
@@ -80,7 +79,9 @@ def analyze_districts():
         df_sorted['Turnout Source'] = df_sorted.apply(
             lambda row: 'Democratic Primary' 
             if row['2024 Democratic Primary - Turnout'] != "No turnout data" 
-            else 'Nonpartisan Primary', 
+            else 'Nonpartisan Primary' 
+            if row['2024 Nonpartisan Primary - Turnout'] != "No turnout data" 
+            else 'No primary election', 
             axis=1
         )
         
